@@ -8,8 +8,12 @@ from flask_sqlalchemy import SQLAlchemy
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.orm import relationship
+from flask_login import UserMixin, LoginManager, logout_user, login_required, current_user, login_user
+
 # Import your forms from the forms.py
 from forms import CreatePostForm
+from forms import RegisterForm
+from forms import LoginForm
 
 
 app = Flask(__name__)
@@ -25,6 +29,14 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///posts.db'
 db = SQLAlchemy()
 db.init_app(app)
 
+# Configure Flask-Login's Login Manager
+login_manager = LoginManager()
+login_manager.init_app(app)
+
+# Create a user_loader callback
+@login_manager.user_loader
+def load_user(user_id):
+    return db.get_or_404(User, user_id)
 
 # CONFIGURE TABLES
 class BlogPost(db.Model):
@@ -38,7 +50,14 @@ class BlogPost(db.Model):
     img_url = db.Column(db.String(250), nullable=False)
 
 
-# TODO: Create a User table for all your registered users. 
+# Create a User table for all your registered users.
+
+class User(UserMixin, db.Model):
+    __tablename__ = "users"
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(250), unique=True, nullable=False)
+    password = db.Column(db.String(250), nullable=False)
+    name = db.Column(db.String(250), nullable=False)
 
 
 with app.app_context():
@@ -46,15 +65,49 @@ with app.app_context():
 
 
 # TODO: Use Werkzeug to hash the user's password when creating a new user.
-@app.route('/register')
+@app.route('/register', methods=["GET", "POST"])
 def register():
-    return render_template("register.html")
+    form = RegisterForm()
+    if form.validate_on_submit():
+        email = form.email.data
+        user = db.session.execute(db.select(User).where(User.email == email)).scalar()
+        if user:
+            flash("You've already signed up with that email, log in instead!")
+            return redirect(url_for('login'))
+        else:
+            password = generate_password_hash(form.password.data, method="pbkdf2:sha256", salt_length=8)
+            user = User(
+                email=form.email.data,
+                password=password,
+                name=form.name.data
+            )
+            db.session.add(user)
+            db.session.commit()
+            login_user(user)
+            return redirect(url_for('get_all_posts'))
+    return render_template("register.html", form=form)
 
 
 # TODO: Retrieve a user from the database based on their email. 
-@app.route('/login')
+@app.route('/login', methods=["GET", "POST"])
 def login():
-    return render_template("login.html")
+    form = LoginForm()
+    if form.validate_on_submit():
+        email = form.email.data
+        password = form.password.data
+
+        user = db.session.execute(db.select(User).where(User.email == email)).scalar()
+
+        if not user:
+            flash("The email does not exist, please try again.")
+        elif not check_password_hash(user.password, password):
+            flash("Wrong password, try again.")
+            return redirect(url_for('login'))
+        else:
+            login_user(user)
+            return redirect(url_for("get_all_posts"))
+
+    return render_template("login.html", form=form)
 
 
 @app.route('/logout')

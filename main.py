@@ -37,7 +37,7 @@ gravatar = Gravatar(app,
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///posts.db'
 db = SQLAlchemy()
 db.init_app(app)
-
+# Configure Flask-Login's Login Manager
 # Configure Flask-Login's Login Manager
 login_manager = LoginManager()
 login_manager.init_app(app)
